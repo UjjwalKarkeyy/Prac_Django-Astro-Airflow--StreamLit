@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'api.ingest.apps.IngestConfig',
+    'api.retrieve.apps.RetrieveConfig',
 ]
 
 MIDDLEWARE = [
@@ -75,12 +76,18 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "airflow",
+        "USER": "django",
+        "PASSWORD": "django",
+        "HOST": "localhost",
+        "PORT": "5432",
+        "OPTIONS":{
+            "options": "-c search_path=django",
+        },
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

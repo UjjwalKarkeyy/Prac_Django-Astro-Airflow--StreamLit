@@ -6,3 +6,4 @@ class IngestView(APIView):
     def post(self, request):
         result = trigger_dag("start_tmdb")
         return Response(result)
+    

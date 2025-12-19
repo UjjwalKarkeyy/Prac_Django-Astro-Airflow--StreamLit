@@ -15,7 +15,6 @@ POSTGRES_CONN_ID = "postgres_default"
     tags=["tmdb"],
 )
 def start_tmdb():
-
     @task
     def extract_tmdb_data():
         conn = BaseHook.get_connection("tmdb_api")
@@ -53,7 +52,7 @@ def start_tmdb():
     def load_tmdb_data(transformed_data):
         pg_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
         conn = pg_hook.get_conn()
-        cursor = conn.cursor()
+        cursor = conn.cursor()  
 
         cursor.execute(execute_sql)
 
@@ -75,6 +74,5 @@ def start_tmdb():
     tmdb_data = extract_tmdb_data()
     transformed_data = transform_tmdb_data(tmdb_data)
     load_tmdb_data(transformed_data)
-
 
 start_tmdb()
