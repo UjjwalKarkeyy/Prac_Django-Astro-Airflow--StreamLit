@@ -10,6 +10,7 @@ DJANGO_INGEST_API = "http://127.0.0.1:8000/api/ingest"
 st.title("Top 10 Movie Data Fetched from TMDB")
 trigger_btn = st.button('Trigger Tasks')  
 
+
 if trigger_btn:
     try:
         # Trigger DAG
