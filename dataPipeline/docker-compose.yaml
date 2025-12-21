@@ -3,19 +3,20 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.9.3}
-  # build: .
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.9.3}
+  build: .
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_pass@host.docker.internal:5432/tmdb_db?options=-csearch_path%3Dairflow # %3D means =
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow_pass@host.docker.internal:5432/tmdb_db?options=-csearch_path%3Dairflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_pass@host.docker.internal:5432/data_pipeline?options=-csearch_path%3Dairflow # %3D means =
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow_pass@host.docker.internal:5432/data_pipeline?options=-csearch_path%3Dairflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    PYTHONPATH: /opt/airflow
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    PYTHONPATH: /opt/airflow/dags:/opt/airflow
+    YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
@@ -23,7 +24,7 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # The following line can be used to set a custom config file, stored in the local config folder
     # If you want to use it, outcomment it and replace airflow.cfg with the name of your config file
     # AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
@@ -33,33 +34,16 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/schemas:/opt/airflow/schemas
+    - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
+    - ${AIRFLOW_PROJ_DIR:-.}/collectors:/opt/airflow/collectors
+       
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
     redis:
       condition: service_healthy
-    # postgres:
-    #   condition: service_healthy
 
 services:
-
-#   postgres:
-#     image: postgres:14
-#     ports:
-#       - "5432:5432"
-#     environment:
-#       POSTGRES_USER: airflow
-#       POSTGRES_PASSWORD: airflow
-#       POSTGRES_DB: airflow
-#     volumes:
-#       - postgres-db-volume:/var/lib/postgresql/data
-#     healthcheck:
-#       test: ["CMD", "pg_isready", "-U", "airflow"]
-#       interval: 10s
-#       retries: 5
-#       start_period: 5s
-#     restart: always
-
   redis:
     # Redis is limited to 7.2-bookworm due to licencing change
     # https://redis.io/blog/redis-adopts-dual-source-available-licensing/
@@ -105,6 +89,11 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      PYTHONPATH: /opt/airflow/dags:/opt/airflow
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+      DUMB_INIT_SETSID: "0"
 
   airflow-worker:
     <<: *airflow-common
@@ -123,6 +112,7 @@ services:
       # Required to handle warm shutdown of the celery workers properly
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
@@ -146,9 +136,6 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    # Ensure this service can reach the external host
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     entrypoint: /bin/bash
     # yamllint disable rule:line-length
     command:
@@ -214,8 +201,9 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
       - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
       - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+      - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data  
       - ${AIRFLOW_PROJ_DIR:-.}/schemas:/opt/airflow/schemas
-
+      - ${AIRFLOW_PROJ_DIR:-.}/collectors:/opt/airflow/collectors
 
   airflow-cli:
     <<: *airflow-common

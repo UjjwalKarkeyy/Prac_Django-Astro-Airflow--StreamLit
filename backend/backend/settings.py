@@ -77,7 +77,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "tmdb_db",
+        "NAME": "data_pipeline",
         "USER": "django",
         "PASSWORD": "django_pass",
         "HOST": "localhost",

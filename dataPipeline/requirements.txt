@@ -1,0 +1,6 @@
+pandas
+praw
+google-api-python-client
+discord.py
+python-decouple
+apache-airflow

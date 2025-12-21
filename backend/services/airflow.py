@@ -6,7 +6,7 @@ AIRFLOW_BASE_URL = "http://localhost:8080/api/v1"
 AIRFLOW_USERNAME = "airflow"
 AIRFLOW_PASSWORD = "airflow"
 
-def trigger_dag(dag_id, conf=None, run_id=None):
+def trigger_dag(dag_id, topic, conf=None, run_id=None):
     url = f"{AIRFLOW_BASE_URL}/dags/{dag_id}/dagRuns"
 
     payload = {}

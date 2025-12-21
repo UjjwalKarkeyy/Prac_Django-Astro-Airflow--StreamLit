@@ -7,14 +7,16 @@ from services.retrieve_data import preview_data
 
 DJANGO_INGEST_API = "http://127.0.0.1:8000/api/ingest"
 
-st.title("Top 10 Movie Data Fetched from TMDB")
-trigger_btn = st.button('Trigger Tasks')  
+st.title("Start Fetching and Analyzing Data")
 
+with st.form('dag_form'):
+    topic = st.text_input(label='Enter Topic', max_chars=255)
+    trigger_btn = st.form_submit_button('Trigger Tasks')     
 
-if trigger_btn:
+if trigger_btn and topic:
     try:
         # Trigger DAG
-        response = requests.post(DJANGO_INGEST_API, timeout=10)
+        response = requests.post(f'{DJANGO_INGEST_API}/{topic}/', timeout=10)
         response.raise_for_status()
         data = response.json()
 
