@@ -9,9 +9,14 @@ AIRFLOW_PASSWORD = "airflow"
 def trigger_dag(dag_id, topic, conf=None, run_id=None):
     url = f"{AIRFLOW_BASE_URL}/dags/{dag_id}/dagRuns"
 
-    payload = {}
+    # always send dag_id + topic in conf
+    payload_conf = {"dag_id": dag_id, "topic": topic}
+    # merge any extra conf the caller provides
     if conf:
-        payload["conf"] = conf
+        payload_conf.update(conf)
+
+    payload = {"conf": payload_conf}
+
     if run_id:
         payload["dag_run_id"] = run_id
 
@@ -19,7 +24,7 @@ def trigger_dag(dag_id, topic, conf=None, run_id=None):
         url,
         json=payload,
         auth=HTTPBasicAuth(AIRFLOW_USERNAME, AIRFLOW_PASSWORD),
-        timeout=15, # responding time, but the whole process time
+        timeout=15,
     )
 
     response.raise_for_status()

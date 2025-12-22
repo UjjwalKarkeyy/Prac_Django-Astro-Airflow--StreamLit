@@ -1,6 +1,7 @@
 from airflow.decorators import dag, task
 from pendulum import datetime
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.operators.python import get_current_context
 from schemas.etl_schema import execute_sql, insert_sql
 from collectors.youtube_collector import YouTubeNepal
 from airflow.exceptions import AirflowSkipException
@@ -19,9 +20,14 @@ POSTGRES_CONN_ID = "postgres_default"
 def start_genz_dag():
     @task
     def extract_data():
+        ctx = get_current_context()
+        conf = (ctx.get('dag_run').conf or {})
+        topic = conf.get('topic', 'genz')
+        
         collector = YouTubeNepal()
         # search videos
-        vidIds = collector.search_videos(f"India", max_results=2)
+        vidIds = collector.search_videos(topic, max_results=5)
+        print(f'Searching for topic: {topic}')
 
         if not vidIds:
             print("No videos found.")
@@ -62,7 +68,7 @@ def start_genz_dag():
             comments.append(
                 {
                     "id": item["id"],
-                    "text": snippet["textDisplay"],
+                    "comment": snippet["textDisplay"],
                     "author": snippet["authorDisplayName"],
                     "timestamp": snippet["publishedAt"],
                 }
@@ -83,7 +89,7 @@ def start_genz_dag():
         values = [
             (
                 val["id"],
-                val["text"],
+                val["comment"],
                 val["author"],
                 val["timestamp"],
             )

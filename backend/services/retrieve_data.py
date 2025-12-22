@@ -1,17 +1,17 @@
 from django.db import connection
 from django.db.utils import ProgrammingError
 from rest_framework.exceptions import ValidationError
-from api.retrieve.serializers import MovieSerializer
+from api.retrieve.serializers import CommentsSerializer
 
 def retrieve_data():
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM airflow.movie_data LIMIT 10;")
+            cursor.execute("SELECT * FROM airflow.yt_comments LIMIT 10;")
             cols = [c[0] for c in cursor.description]
             rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
         # Serialize (and validate) only the fields we care about
-        serializer = MovieSerializer(data=rows, many=True)
+        serializer = CommentsSerializer(data=rows, many=True)
         serializer.is_valid(raise_exception=True)
         return serializer.data
 
