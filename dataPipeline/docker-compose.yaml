@@ -36,6 +36,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/schemas:/opt/airflow/schemas
     - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
     - ${AIRFLOW_PROJ_DIR:-.}/collectors:/opt/airflow/collectors
+    - ${AIRFLOW_PROJ_DIR:-.}/services:/opt/airflow/services
        
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
@@ -204,6 +205,7 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data  
       - ${AIRFLOW_PROJ_DIR:-.}/schemas:/opt/airflow/schemas
       - ${AIRFLOW_PROJ_DIR:-.}/collectors:/opt/airflow/collectors
+      - ${AIRFLOW_PROJ_DIR:-.}/services:/opt/airflow/services
 
   airflow-cli:
     <<: *airflow-common

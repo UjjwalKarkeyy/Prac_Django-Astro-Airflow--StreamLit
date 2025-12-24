@@ -16,7 +16,6 @@ class YouTubeNepal(BaseCollector):
         """
         Returns up to max_results video IDs that are:
         - published after 2024-01-01
-        - have >5 top-level comments (replies not counted)
         """
         try:
             print(f"api: {self.youtube}")
@@ -33,7 +32,7 @@ class YouTubeNepal(BaseCollector):
             )
             response = request.execute()
 
-            vid_ids = [item["id"]["videoId"] for item in response.get("items", [])]
+            vid_ids = [item["id"]["videoId"] for item in response.get("items", [])][:max_results]
             print(f"[YT] Found {len(vid_ids)} candidate video IDs: {vid_ids}")
             return vid_ids
 
@@ -41,13 +40,13 @@ class YouTubeNepal(BaseCollector):
             print(f"[YT] SEARCH ERROR: {e}")
             return []
 
-    def fetch_data(self, video_id, cmt_per_vid: int = 5):
+    def fetch_data(self, video_id, cmt_per_vid: int = 1):
         print(f"[YT] ---> STARTING FETCH FOR VIDEO: {video_id}") # LOG TEST
         try:
             request = self.youtube.commentThreads().list(
                 part="snippet",
                 videoId=video_id,
-                maxResults=5,
+                maxResults=cmt_per_vid,
                 textFormat="plainText",
                 order='relevance', 
             )

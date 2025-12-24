@@ -1,13 +1,15 @@
 from airflow.decorators import dag, task
 import pendulum
 from pendulum import datetime
-from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.operators.python import get_current_context
-from schemas.etl_schema import execute_comments_sql, execute_topic_sql, insert_comments_sql, insert_topic_sql
+from schemas.etl_schema import (execute_comments_sql, execute_topic_sql, execute_processed_vidIds_sql, 
+                                insert_comments_sql, insert_topic_sql, insert_processed_vidIds_sql,
+                                update_topic_sql
+                                )
 from collectors.youtube_collector import YouTubeNepal
 from airflow.exceptions import AirflowSkipException
-
-POSTGRES_CONN_ID = "postgres_default"
+from services.psql_conn import psql_cursor
+from services.redis_client import get_redis
 
 @dag(
     dag_id="genz_dag",
@@ -19,22 +21,24 @@ POSTGRES_CONN_ID = "postgres_default"
 )
 
 def start_genz_dag():
-    dag_run_info = {
-        'topic': '',
-        'max_results': 5,
-        'cmt_per_vid': 5,
-    }
     @task
     def extract_data():
+        extract_info = {
+            'dag_id': '',
+            'topic': '',
+            'max_results': 1,
+            'cmt_per_vid': 5,
+        }
+        redis = get_redis()
         ctx = get_current_context()
         conf = (ctx.get('dag_run').conf or {})
-        dag_run_info['topic'] = conf.get('topic', 'genz') 
+        extract_info['topic'], extract_info['dag_id']  = conf.get('topic', 'genz'), conf.get('dag_id', 'genz_dag') 
         
         collector = YouTubeNepal()
 
         # search videos
-        vidIds = collector.search_videos(dag_run_info['topic'], dag_run_info['max_results'])
-        print(f'Searching for topic: {dag_run_info['topic']}')
+        vidIds = collector.search_videos(extract_info['topic'], extract_info['max_results'])
+        print(f'Searching for topic: {extract_info['topic']}')
 
         if not vidIds:
             print("No videos found.")
@@ -43,14 +47,23 @@ def start_genz_dag():
         all_items = []
         for vidId in vidIds:
             if collector.is_already_processed(vidId):
+                redis.sadd(f"processed_vids:{extract_info['dag_id']}", vidId)
                 print(f"Skipping {vidId}: Already processed")
                 continue
 
             # api call
             print(f"Data Fetching for: {vidId}")
-            response = collector.fetch_data(vidId, cmt_per_vid = dag_run_info['cmt_per_vid'])
+            # not processed scenario
+            redis.sadd(f"not_processed:{extract_info['dag_id']}", vidId)
+            response = collector.fetch_data(vidId, cmt_per_vid = extract_info['cmt_per_vid'])
             if response:
-                all_items.extend(response.get("items"))
+                all_items.extend([
+                    {
+                        "vid_id": vidId,
+                        "item": item
+                    }
+                    for item in response.get("items", [])
+                ])
                 # collector.mark_as_processed(vidId)
                 print(f"Logged ID {vidId} to processed_log.json")
 
@@ -65,8 +78,14 @@ def start_genz_dag():
 
         if not items:
             raise AirflowSkipException("No comments found")
+
         comments = []
-        for item in items:
+        for wrapped in items:
+            # get parent video id
+            vid_id = wrapped["vid_id"]          
+            # actual YT comment object
+            item = wrapped["item"]              
+
             snippet = (
                 item.get("snippet", {})
                     .get("topLevelComment", {})
@@ -74,59 +93,98 @@ def start_genz_dag():
             )
             if not snippet:
                 continue
+
             comments.append(
                 {
-                    "id": item["id"],
+                    # comment id
+                    "id": item["id"],           
+                    # keep association
+                    "vid_id": vid_id,            
                     "comment": snippet["textDisplay"],
                     "author": snippet["authorDisplayName"],
                     "p_timestamp": snippet["publishedAt"],
                     "t_timestamp": pendulum.now("Asia/Kathmandu")
                 }
             )
+
         if not comments:
             raise AirflowSkipException("No valid comments after filtering")
 
         return comments
-
+    
     @task
     def load_data(comments):
         ctx = get_current_context()
-        conf = (ctx.get('dag_run').conf or {})
-        topic, dag_id = conf.get('topic', 'genz'), conf.get('dag_id', 'genz_dag')
-        collector = 'YT'
+        conf = ctx.get("dag_run").conf or {}
 
-        pg_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
-        conn = pg_hook.get_conn()
-        cursor = conn.cursor()  
+        topic = conf.get("topic", "genz")
+        dag_id = ctx["dag"].dag_id
+        collector = "YT"
 
-        cursor.execute(execute_comments_sql)
-        cursor.execute(execute_topic_sql)
+        redis = get_redis()
 
-        comment_values = [
-            (
-                val["id"],
-                val["comment"],
-                val["author"],
-                val["p_timestamp"],
-                val["t_timestamp"],
-            )
-            for val in comments
-        ]
+        # read redis state
+        processed_vids = redis.smembers(f"processed:{dag_id}")
+        not_processed_vids = redis.smembers(f"not_processed:{dag_id}")
 
-        topic_values = [
-            (
-                val["id"],
-                [topic],
-                [collector],
-                dag_id,
-            )
-            for val in comments
-        ]
+        with psql_cursor() as cursor:
+            # ensure tables exist
+            cursor.execute(execute_comments_sql)
+            cursor.execute(execute_topic_sql)
 
-        cursor.executemany(insert_comments_sql, comment_values)
-        cursor.executemany(insert_topic_sql, topic_values)
-        conn.commit()
-        cursor.close()
+            # insert comments
+            comment_values = [
+                (
+                    val["id"],
+                    val["comment"],
+                    val["author"],
+                    val["p_timestamp"],
+                    val["t_timestamp"],
+                )
+                for val in comments
+            ]
+
+            cursor.executemany(insert_comments_sql, comment_values)
+
+            # new videos → INSERT
+            new_topic_values = [
+                (
+                    val["id"],
+                    [topic],
+                    [collector],
+                    dag_id,
+                )
+                for val in comments
+                if val["vid_id"] in not_processed_vids
+            ]
+
+            cursor.executemany(insert_topic_sql, new_topic_values)
+
+            # processed videos → UPDATE (add topic)
+            for val in comments:
+                if val["vid_id"] in processed_vids:
+                    cursor.execute(
+                        update_topic_sql,
+                        ([topic], val["id"])
+                    )
+
+            processed_values = [
+                (
+                    val["vid_id"],
+                    val["id"],
+                )
+                for val in comments
+                if (
+                    val["vid_id"] in processed_vids
+                    or val["vid_id"] in not_processed_vids
+                )
+            ]
+
+            cursor.executemany(insert_processed_vidIds_sql, processed_values)
+
+        redis.delete(f"processed_vids:{dag_id}")
+        redis.delete(f"not_processed:{dag_id}")
+
 
     data = extract_data()
     comments = transform_data(data)

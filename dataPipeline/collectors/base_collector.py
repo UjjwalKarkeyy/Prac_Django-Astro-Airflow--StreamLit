@@ -1,6 +1,7 @@
 import os
 import json
 from abc import ABC, abstractmethod
+from services.psql_conn import psql_cursor
 
 class BaseCollector(ABC):
     def __init__(self, platform):
@@ -12,21 +13,17 @@ class BaseCollector(ABC):
     @abstractmethod
     def fetch_data(self, *args, **kwargs): pass
 
-    def is_already_processed(self, item_id):
-        """Check if we already downloaded data for this ID."""
-        if not os.path.exists(self.log_file):
-            return False
-        try:
-            with open(self.log_file, "r") as f:
-                content = f.read().strip()
-                if content is None:
-                    return False  # empty file → nothing processed yet
-                processed_ids = json.loads(content)
-        except json.JSONDecodeError:
-            # corrupted or partially written file
-            return False
-
-        return item_id in processed_ids
+    def is_already_processed(self, vid_id: str) -> bool:
+        """
+        Returns True if this video has already been processed (i.e., exists in processed_vidIds table).
+        """
+        with psql_cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM processed_vidIds WHERE vid_id = %s LIMIT 1;",
+                (vid_id,)
+            )
+            exists = cursor.fetchone() is not None
+            return exists
 
     def mark_as_processed(self, item_id):
         """Add ID to the processed list to avoid duplicates next time."""

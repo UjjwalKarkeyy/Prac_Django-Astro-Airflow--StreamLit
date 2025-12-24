@@ -21,6 +21,19 @@ CREATE TABLE IF NOT EXISTS topic_collector (
 );
 """
 
+execute_processed_vidIds_sql = """
+CREATE TABLE IF NOT EXISTS processed_vidIds (
+    vid_id TEXT NOT NULL,
+    cmt_id TEXT NOT NULL,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (vid_id, cmt_id),
+    CONSTRAINT fk_comments
+        FOREIGN KEY (cmt_id)
+        REFERENCES comments(id)
+        ON DELETE CASCADE
+);
+"""
+
 insert_comments_sql = """
 INSERT INTO comments (id, comment, author, p_timestamp, t_timestamp)
 VALUES (%s, %s, %s, %s, %s)
@@ -31,4 +44,18 @@ insert_topic_sql = """
 INSERT INTO topic_collector (id, topic, collector, dag_id)
 VALUES (%s, %s, %s, %s)
 ON CONFLICT (id) DO NOTHING;
+"""
+
+insert_processed_vidIds_sql = """
+INSERT INTO processed_vidIds (vid_id, cmt_id)
+VALUES (%s, %s)
+ON CONFLICT (vid_id, cmt_id) DO NOTHING;
+"""
+
+update_topic_sql = """
+UPDATE topic_collector
+SET topic = ARRAY(
+    SELECT DISTINCT unnest(topic || %s)
+)
+WHERE id = %s;
 """
