@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
-      POSTGRES_DB: tmdb_db
+      POSTGRES_DB: data_pipeline
       # Required: Directs Postgres to use the custom internal path
       PGDATA: /var/lib/postgresql/db/pgdata
     ports:
