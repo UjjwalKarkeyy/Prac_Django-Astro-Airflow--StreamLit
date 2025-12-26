@@ -83,7 +83,7 @@ DATABASES = {
         "HOST": "localhost",
         "PORT": "5432",
         "OPTIONS":{
-            "options": "-c search_path=django",
+            "options": "-c search_path=django,airflow",
         },
     }
 }

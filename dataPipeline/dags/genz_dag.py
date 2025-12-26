@@ -10,6 +10,7 @@ from collectors.youtube_collector import YouTubeNepal
 from airflow.exceptions import AirflowSkipException
 from services.psql_conn import psql_cursor
 from services.redis_client import get_redis
+from services.api_services import api_provider
 
 @dag(
     dag_id="genz_dag",
@@ -22,20 +23,26 @@ from services.redis_client import get_redis
 
 def start_genz_dag():
     @task
-    def extract_data():
+    def extract_data(**context):
         extract_info = {
             'dag_id': '',
             'topic': '',
             'max_results': 1,
-            'cmt_per_vid': 5,
+            'cmt_per_vid': 0,
         }
         redis = get_redis()
         ctx = get_current_context()
         conf = (ctx.get('dag_run').conf or {})
         extract_info['topic'], extract_info['dag_id']  = conf.get('topic', 'genz'), conf.get('dag_id', 'genz_dag') 
         
-        collector = YouTubeNepal()
+        api_key = api_provider()
+        if not api_key:
+            reason = "No API key found, cannot fetch data"
+            context['ti'].xcom_push(key='skip_reason', value=reason)
+            raise AirflowSkipException(reason)
 
+        collector = YouTubeNepal(api_key)
+            
         # search videos
         vidIds = collector.search_videos(extract_info['topic'], extract_info['max_results'])
         print(f'Searching for topic: {extract_info['topic']}')
@@ -70,14 +77,16 @@ def start_genz_dag():
             else:
                 print(f"No data retrieved for {vidId}")
 
+        if not all_items:
+            reason = "No comments found!"
+            context['ti'].xcom_push(key='skip_reason', value=reason)
+            raise AirflowSkipException(reason)
+            
         return {'items': all_items}
 
     @task
     def transform_data(extracted_data):
         items = extracted_data.get("items", [])
-
-        if not items:
-            raise AirflowSkipException("No comments found")
 
         comments = []
         for wrapped in items:
