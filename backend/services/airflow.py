@@ -1,6 +1,7 @@
 # services/airflow.py
 import requests
 from requests.auth import HTTPBasicAuth
+from services.exceptions import AirflowError
 
 AIRFLOW_BASE_URL = "http://localhost:8080/api/v1"
 AIRFLOW_USERNAME = "airflow"
@@ -21,11 +22,14 @@ def trigger_dag(dag_id, topic, conf=None, run_id=None):
         payload["dag_run_id"] = run_id
 
     response = requests.post(
-        url,
-        json=payload,
-        auth=HTTPBasicAuth(AIRFLOW_USERNAME, AIRFLOW_PASSWORD),
-        timeout=15,
-    )
-
+            url,
+            json=payload,
+            auth=HTTPBasicAuth(AIRFLOW_USERNAME, AIRFLOW_PASSWORD),
+            timeout=15,
+        )
+    if not response.ok:
+        raise AirflowError(
+            f"Airflow error {response.status_code}: {response.text}"
+        )
     response.raise_for_status()
     return response.json()
